@@ -373,7 +373,7 @@ function findComponentGrids(obstacles: Obstacle[]): ComponentGrid[] {
 }
 
 function getPointLayers(point: ConnectionPoint): string[] {
-  return "layer" in point ? [point.layer] : point.layers
+  return point.layers !== undefined ? point.layers : [point.layer]
 }
 
 function findPointObstacleMatches(params: {
@@ -413,7 +413,7 @@ function findPointObstacleMatches(params: {
 
 function inferBusId(connection: SimpleRouteConnection): string | null {
   for (const point of connection.pointsToConnect) {
-    if ("layers" in point && point.busId) return point.busId
+    if (point.layers !== undefined && point.busId) return point.busId
   }
   const nameMatch = /^BUS[_:-]([^_:-]+)(?:[_:-]\d+)?$/i.exec(connection.name)
   return nameMatch?.[1] ?? null

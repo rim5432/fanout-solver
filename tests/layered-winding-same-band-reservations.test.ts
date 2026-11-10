@@ -66,7 +66,7 @@ test("layered winding buses sharing a corner reserve distinct boundary exits", (
       direction: "up",
       preferredExit: "top-right",
       exitEdge: "right",
-      allowedLayers,
+      allowedLayers: [...allowedLayers],
       connectionExitTargets: {
         [busId]: { x: 8, y: targetY, layer: allowedLayers[0] },
       },

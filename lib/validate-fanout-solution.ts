@@ -37,7 +37,7 @@ function pointsMatch(first: Point2D, second: Point2D): boolean {
 }
 
 function getPointLayers(point: ConnectionPoint): string[] {
-  return "layer" in point ? [point.layer] : point.layers
+  return point.layers !== undefined ? point.layers : [point.layer]
 }
 
 function getPlanSegments(plan: FanoutRoutePlan): RoutedSegment[] {

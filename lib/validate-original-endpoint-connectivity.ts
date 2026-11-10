@@ -81,7 +81,7 @@ type CopperPrimitive =
   | PlaneCopper
 
 function getPointLayers(point: ConnectionPoint): string[] {
-  return "layer" in point ? [point.layer] : point.layers
+  return point.layers !== undefined ? point.layers : [point.layer]
 }
 
 function layersOverlap(first: readonly string[], second: readonly string[]) {

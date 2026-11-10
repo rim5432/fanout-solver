@@ -2,6 +2,7 @@ import { expect, test } from "bun:test"
 import { getSvgFromGraphicsObject } from "graphics-debug"
 import { benchmarkSamples } from "../benchmarks/benchmark-catalog"
 import { FanoutSolver } from "../lib/fanout-solver"
+import type { FanoutSolverOptions } from "../lib/types"
 import { createDataset31Sample } from "../scripts/generate-repro/create-dataset31-sample"
 
 test("shows dataset 31 sample 59 while the native router is still running", async () => {
@@ -10,7 +11,7 @@ test("shows dataset 31 sample 59 while the native router is still running", asyn
   const sample = await createDataset31Sample(definition)
   const solver = new FanoutSolver(
     structuredClone(sample.simpleRouteJson),
-    structuredClone(sample.solverOptions),
+    structuredClone(sample.solverOptions) as FanoutSolverOptions,
   )
 
   let nativeRouter = solver.activeSubSolver

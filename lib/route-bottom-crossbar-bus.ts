@@ -175,9 +175,11 @@ export function* routeBottomCrossbarBusSteps(
         {
           ...connection,
           sourcePoint: {
-            ...connection.sourcePoint,
             ...viaPoint,
             layer: "top",
+            pointId: connection.sourcePoint.pointId,
+            pcb_port_id: connection.sourcePoint.pcb_port_id,
+            port_selector: connection.sourcePoint.port_selector,
           },
           sourceObstacle: ownObstacle,
           sourceLayer: "top",

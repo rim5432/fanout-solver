@@ -135,7 +135,7 @@ export interface FanoutBusSpec extends SimpleRouteBus {
    */
   exitEdge?: FanoutEdge
   /** Layers to which this bus is allowed to escape. */
-  allowedLayers?: readonly string[]
+  allowedLayers?: string[]
   /**
    * Preferred downstream routing point for each connection after it leaves the
    * fanout boundary. This is routing guidance only and does not replace the
@@ -341,7 +341,7 @@ export interface PreparedBus {
   /** Total connection count sharing this explicit edge/corner band. */
   cornerBandConnectionCount?: number
   /** Layers to which this bus is allowed to escape. */
-  allowedLayers?: readonly string[]
+  allowedLayers?: string[]
   /** Bus layers that also survive the solver-wide escape-layer restriction. */
   routableEscapeLayers?: readonly string[]
   termination: FanoutBusTermination

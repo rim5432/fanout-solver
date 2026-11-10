@@ -1,5 +1,6 @@
 import { GenericSolverDebugger } from "@tscircuit/solver-utils/react"
 import { FanoutSolver } from "lib/fanout-solver"
+import type { FanoutSolverOptions } from "lib/types"
 import { useEffect, useState } from "react"
 import {
   createDataset31Sample,
@@ -238,7 +239,7 @@ export default function BenchmarkSamplesPage() {
           createSolver={() =>
             new FanoutSolver(
               structuredClone(loadState.sample.simpleRouteJson),
-              structuredClone(loadState.sample.solverOptions),
+              structuredClone(loadState.sample.solverOptions) as FanoutSolverOptions,
             )
           }
           animationSpeed={80}
