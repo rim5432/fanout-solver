@@ -8,7 +8,7 @@ export {
   type ComponentDogboneViaSiteCandidate,
 } from "./match-component-dogbone-via-sites"
 export { getCopperLayerColor } from "./layer-colors"
-export { getCopperLayerNames } from "./layer-names"
+export { getCopperLayerNames, getRouteViaSpanLayers } from "./layer-names"
 export type {
   Bounds,
   FanoutAttemptSummary,
@@ -53,3 +53,7 @@ export type {
   RoutedCopperDrcReport,
 } from "./validate-routed-copper-drc"
 export { validateRoutedCopperDrc } from "./validate-routed-copper-drc"
+export {
+  routeLocalSignalDogbones,
+  type LocalSignalDogboneOptions,
+} from "./route-local-signal-dogbones"

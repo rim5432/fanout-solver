@@ -19,6 +19,9 @@ const DEFAULT_MAXIMUM_SEARCH_STATES = 100_000
 
 export interface DogboneViaSiteGeometryRules {
   viaDiameter: number
+  /** Physical copper layers occupied by each candidate via. Omitted entries
+   * preserve the conservative through-via behavior of existing callers. */
+  viaLayersByConnectionIndex?: ReadonlyMap<number, readonly string[]>
   viaHoleDiameter?: number
   traceWidth: number
   clearance: number
@@ -81,6 +84,7 @@ interface ViaSiteCandidate {
   connectionIndex: number
   point: Point2D
   sourceSegment: RoutedSegment
+  viaLayers?: readonly string[]
   outwardRank: number
 }
 
@@ -308,13 +312,17 @@ function getOutwardRank(params: {
 function viaSiteClearsObstacles(params: {
   point: Point2D
   obstacles: readonly Obstacle[]
+  sourceLayer: string
   viaDiameter: number
   clearance: number
 }): boolean {
-  const { point, obstacles, viaDiameter, clearance } = params
+  const { point, obstacles, sourceLayer, viaDiameter, clearance } = params
   const requiredClearance = viaDiameter / 2 + clearance
   return obstacles.every(
     (obstacle) =>
+      // Other-layer pours can form antipads around the via. Source-layer
+      // reservations and physical pads/holes must still satisfy clearance.
+      (obstacle.isCopperPour && !obstacle.layers.includes(sourceLayer)) ||
       distancePointToObstacle(point, obstacle) >= requiredClearance - EPSILON,
   )
 }
@@ -340,12 +348,21 @@ function getConnectionCandidates(params: {
   connection: ComponentConnection
   component: ComponentMatchingInput
   rules: DogboneViaSiteGeometryRules
+  includeProjectedSites?: boolean
 }): ViaSiteCandidate[] {
-  const { connection, component, rules } = params
+  const { connection, component, rules, includeProjectedSites = true } = params
   const { preparedConnection, direction } = connection
   const obstacles = rules.additionalObstacles
     ? [...new Set([...component.obstacles, ...rules.additionalObstacles])]
     : component.obstacles
+  const viaLayers = rules.viaLayersByConnectionIndex?.get(
+    preparedConnection.connectionIndex,
+  )
+  if (
+    viaLayers &&
+    (!viaLayers.length || !viaLayers.includes(preparedConnection.sourceLayer))
+  )
+    throw Error("FanoutSolver: dogbone via span must include its source layer")
   const source = {
     x: preparedConnection.sourcePoint.x,
     y: preparedConnection.sourcePoint.y,
@@ -365,6 +382,21 @@ function getConnectionCandidates(params: {
     ...adjacentY.map((y) => ({ x: source.x, y })),
     ...adjacentX.flatMap((x) => adjacentY.map((y) => ({ x, y }))),
   ]
+  if (includeProjectedSites && connection.terminationType === "plane") {
+    // A rectangular or rounded imported grid can put an interstitial midpoint
+    // off the source's 45-degree rays. Intersect those rays with each adjacent
+    // interstitial row/column; all resulting sites still pass normal clearance.
+    for (const x of adjacentX) {
+      for (const y of adjacentY) {
+        const dx = x - source.x
+        const dy = y - source.y
+        rawPoints.push(
+          { x, y: source.y + Math.sign(dy) * Math.abs(dx) },
+          { x: source.x + Math.sign(dx) * Math.abs(dy), y },
+        )
+      }
+    }
+  }
   const uniquePoints: Point2D[] = []
   for (const point of rawPoints) {
     if (
@@ -378,6 +410,16 @@ function getConnectionCandidates(params: {
   )
   const candidatePoints = fixedViaPoint ? [fixedViaPoint] : uniquePoints
 
+  const viaObstacles = viaLayers
+    ? obstacles.filter((obstacle) =>
+        obstacle.layers.some((layer) => viaLayers.includes(layer)),
+      )
+    : obstacles
+  const sourceObstacles = viaLayers
+    ? obstacles.filter((obstacle) =>
+        obstacle.layers.includes(preparedConnection.sourceLayer),
+      )
+    : obstacles
   const candidates: ViaSiteCandidate[] = []
   for (const point of candidatePoints) {
     if (
@@ -389,7 +431,8 @@ function getConnectionCandidates(params: {
     if (
       !viaSiteClearsObstacles({
         point,
-        obstacles,
+        obstacles: viaObstacles,
+        sourceLayer: preparedConnection.sourceLayer,
         viaDiameter: rules.viaDiameter,
         clearance: rules.clearance,
       })
@@ -406,7 +449,7 @@ function getConnectionCandidates(params: {
       !sourceSegmentClearsOtherObstacles({
         segment: sourceSegment,
         sourceObstacle: preparedConnection.sourceObstacle,
-        obstacles,
+        obstacles: sourceObstacles,
         clearance: rules.clearance,
       })
     ) {
@@ -428,12 +471,13 @@ function getConnectionCandidates(params: {
         const viaToTraceClearance =
           rules.viaDiameter / 2 + blocker.segment.width / 2 + rules.clearance
         if (
+          (!viaLayers || viaLayers.includes(blocker.segment.layer)) &&
           distancePointToSegment(
             point,
             blocker.segment.start,
             blocker.segment.end,
           ) <
-          viaToTraceClearance - EPSILON
+            viaToTraceClearance - EPSILON
         ) {
           return false
         }
@@ -450,8 +494,12 @@ function getConnectionCandidates(params: {
           return true
         }
         if (
+          (!viaLayers ||
+            blocker.spanLayers.some((layer) => viaLayers.includes(layer))) &&
           distance(point, blocker.center) <
-          (rules.viaDiameter + blocker.diameter) / 2 + rules.clearance - EPSILON
+            (rules.viaDiameter + blocker.diameter) / 2 +
+              rules.clearance -
+              EPSILON
         ) {
           return false
         }
@@ -477,6 +525,7 @@ function getConnectionCandidates(params: {
       connectionIndex: preparedConnection.connectionIndex,
       point,
       sourceSegment,
+      viaLayers,
       outwardRank: getOutwardRank({ source, site: point, direction }),
     })
   }
@@ -558,34 +607,44 @@ function candidatesAreMutuallyClear(params: {
   const requiredViaSeparation = canShareCopper
     ? requiredHoleSeparation
     : Math.max(rules.viaDiameter + rules.clearance, requiredHoleSeparation)
-  if (distance(first.point, second.point) < requiredViaSeparation - EPSILON) {
+  const spansOverlap =
+    !first.viaLayers ||
+    !second.viaLayers ||
+    first.viaLayers.some((layer) => second.viaLayers!.includes(layer))
+  if (
+    spansOverlap &&
+    distance(first.point, second.point) < requiredViaSeparation - EPSILON
+  ) {
     return false
   }
   const requiredViaToTraceClearance =
     rules.viaDiameter / 2 + rules.traceWidth / 2 + rules.clearance
   if (!canShareCopper) {
     if (
-      distancePointToSegment(
-        first.point,
-        second.sourceSegment.start,
-        second.sourceSegment.end,
-      ) <
-        requiredViaToTraceClearance - EPSILON ||
-      distancePointToSegment(
-        second.point,
-        first.sourceSegment.start,
-        first.sourceSegment.end,
-      ) <
-        requiredViaToTraceClearance - EPSILON
+      ((!first.viaLayers ||
+        first.viaLayers.includes(second.sourceSegment.layer)) &&
+        distancePointToSegment(
+          first.point,
+          second.sourceSegment.start,
+          second.sourceSegment.end,
+        ) <
+          requiredViaToTraceClearance - EPSILON) ||
+      ((!second.viaLayers ||
+        second.viaLayers.includes(first.sourceSegment.layer)) &&
+        distancePointToSegment(
+          second.point,
+          first.sourceSegment.start,
+          first.sourceSegment.end,
+        ) <
+          requiredViaToTraceClearance - EPSILON)
     ) {
       return false
     }
   }
   if (canShareCopper) return true
-  return segmentsAreClear(
-    first.sourceSegment,
-    second.sourceSegment,
-    rules.clearance,
+  return (
+    first.sourceSegment.layer !== second.sourceSegment.layer ||
+    segmentsAreClear(first.sourceSegment, second.sourceSegment, rules.clearance)
   )
 }
 
@@ -593,12 +652,18 @@ function matchComponent(params: {
   component: ComponentMatchingInput
   rules: DogboneViaSiteGeometryRules
   consumeSearchState: () => boolean
+  includeProjectedSites: boolean
 }): Map<number, Point2D> | null {
-  const { component, rules, consumeSearchState } = params
+  const { component, rules, consumeSearchState, includeProjectedSites } = params
   const entries: ConnectionCandidates[] = component.connections.map(
     (connection) => ({
       connection,
-      candidates: getConnectionCandidates({ connection, component, rules }),
+      candidates: getConnectionCandidates({
+        connection,
+        component,
+        rules,
+        includeProjectedSites,
+      }),
     }),
   )
   if (entries.some((entry) => entry.candidates.length === 0)) return null
@@ -731,8 +796,9 @@ function matchComponent(params: {
  * Matches every prepared connection to a legal adjacent dogbone via site.
  *
  * Candidate sites are derived from the component pad-center grid: midpoint
- * gaps plus one half-pitch perimeter coordinate on each side. The matcher
- * never infers component or connection metadata from identifiers.
+ * gaps plus one half-pitch perimeter coordinate on each side. Plane dogbones
+ * can also use the intersections of 45-degree source rays with those rows and
+ * columns. The matcher never infers metadata from component/connection IDs.
  */
 export function matchComponentDogboneViaSites(
   preparedBuses: readonly PreparedBus[],
@@ -748,11 +814,27 @@ export function matchComponentDogboneViaSites(
   }
   const result = new Map<number, Point2D>()
   for (const component of getComponentMatchingInputs(preparedBuses)) {
-    const componentResult = matchComponent({
+    // Preserve complete midpoint assignments before expanding the search to
+    // projected 45-degree sites. Both passes share the same search-state limit.
+    let componentResult = matchComponent({
       component,
       rules,
       consumeSearchState,
+      includeProjectedSites: false,
     })
+    if (
+      !componentResult &&
+      component.connections.some(
+        ({ terminationType }) => terminationType === "plane",
+      )
+    ) {
+      componentResult = matchComponent({
+        component,
+        rules,
+        consumeSearchState,
+        includeProjectedSites: true,
+      })
+    }
     if (!componentResult) return null
     for (const [connectionIndex, point] of componentResult) {
       result.set(connectionIndex, point)
