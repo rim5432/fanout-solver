@@ -53,6 +53,7 @@ import {
   routeBusAlternatives,
   routeBusAlternativesSteps,
 } from "./route-bus"
+import { fallbackFailedBusDogbones } from "./fallback-failed-bus-dogbones"
 import { routePeripheralSourceEscapesSteps } from "./route-peripheral-source-escapes"
 import { routeStagedPerimeterBusSteps } from "./route-staged-perimeter-bus"
 import { routeReservedSourceBusesSteps } from "./route-reserved-source-buses"
@@ -5879,6 +5880,29 @@ export class FanoutSolver extends BaseSolver {
         busId: bus.busId,
       })
       yield
+    }
+
+    if (failedBusIds.length > 0) {
+      const failedBuses = this.preparedBuses.filter((bus) =>
+        failedBusIds.includes(bus.busId),
+      )
+      const fallback = fallbackFailedBusDogbones({
+        inputSrj: this.inputSrj,
+        plans,
+        failedBuses,
+        busLayerAssignments,
+        clearance: this.config.clearance,
+        traceWidth: this.config.traceWidth,
+        viaDiameter: this.config.viaDiameter,
+        viaHoleDiameter: this.config.viaHoleDiameter,
+        allowBlindAndBuriedVias: this.config.allowBlindAndBuriedVias,
+      })
+      if (fallback) {
+        plans = fallback.plans
+        failedBusIds = failedBusIds.filter(
+          (busId) => !fallback.rescuedBusIds.includes(busId),
+        )
+      }
     }
 
     let validationIssues: FanoutAttemptSummary["validationIssues"]
