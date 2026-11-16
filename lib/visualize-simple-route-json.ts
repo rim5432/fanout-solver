@@ -49,7 +49,7 @@ const getGraphicsLayer = (
 }
 
 const getPointLayers = (point: ConnectionPoint): string[] => {
-  const layers = "layers" in point ? point.layers : undefined
+  const layers = point.layers
   if (layers && layers.length > 0) return layers
   return [(point as ConnectionPoint & { layer: string }).layer]
 }

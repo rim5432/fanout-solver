@@ -1563,7 +1563,7 @@ function buildPlan(params: {
 }
 
 function getPointLayer(point: PreparedConnection["targetPoint"]): string {
-  const layer = "layer" in point ? point.layer : point.layers[0]
+  const layer = point.layers !== undefined ? point.layers[0] : point.layer
   if (!layer) {
     throw new Error("FanoutSolver: plane endpoint has no copper layer")
   }

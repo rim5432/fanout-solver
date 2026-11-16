@@ -57,7 +57,7 @@ export function routeLocalSignalDogbones(
     if (connection.pointsToConnect.length !== 2)
       throw Error(`${connection.name}: two terminals required`)
     for (const [pointIndex, point] of connection.pointsToConnect.entries()) {
-      const available = "layer" in point ? [point.layer] : point.layers
+      const available = point.layers !== undefined ? point.layers : [point.layer]
       if (available.includes(target)) {
         const { layers: _layers, ...metadata } = point as typeof point & {
           layers?: string[]
