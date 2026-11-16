@@ -82,11 +82,14 @@ test("local signal dogbones escape both pad fields without boundary routes", asy
       }))
       rotated.connections = rotated.connections.map((c) => ({
         ...c,
+        // the 0.0.1041 ConnectionPoint union is stricter than 0.0.718's:
+        // forcing `layer` on a multi-layer point builds a hybrid the runtime
+        // layer guards handle, so the fixture casts back to the point union
         pointsToConnect: c.pointsToConnect.map((p) => ({
           ...p,
           ...rotate(p),
           layer,
-        })),
+        }) as typeof p),
       }))
       const escaped = routeLocalSignalDogbones(rotated, options)
       expect(escaped.traces).toHaveLength(8)
